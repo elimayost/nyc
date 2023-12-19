@@ -1,0 +1,51 @@
+apiVersion: argoproj.io/v1alpha1
+kind: CronWorkflow
+metadata:
+  name: nyc
+  namespace: argo
+  labels:
+    workflows.argoproj.io/archive-strategy: "false"
+  annotations:
+    workflows.argoproj.io/description: NYC data pipeline
+spec:
+  schedule: "0 6 * * *"
+  concurrencyPolicy: "Replace"
+  startingDeadlineSeconds: 0
+  workflowSpec:
+    entrypoint: nyc
+    podGC:
+      strategy: OnPodSuccess
+    volumes:
+      - name: rclone-conf
+        secret:
+          secretName: nyc
+          items:
+          - key: rclone.conf
+            path: "rclone.conf"
+          defaultMode: 0600
+    templates:
+    - name: nyc
+      parallelism: 5
+      dag:
+        tasks:
+        - name: pipeline
+          template: pipeline
+          arguments:
+            parameters:
+              - name: period
+                value: "{{item}}"
+          withItems:
+            - "08 2023"
+
+    - name: pipeline
+      inputs:
+        parameters:
+          - name: period
+      container:
+        image: elimayost/nyc:latest
+        imagePullPolicy: Always
+        command: ["bash"]
+        args: ["/app/pipelines/nyc.sh", "{{inputs.parameters.period}}"]
+        volumeMounts:
+          - name: rclone-conf
+            mountPath: "/root/.config/rclone/"
